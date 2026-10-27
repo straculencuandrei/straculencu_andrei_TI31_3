@@ -1,0 +1,18 @@
+# Ignore PDF
+*.pdf
+
+# Binaries and compilation artifacts
+*.exe
+*.obj
+*.pdb
+*.ilk
+
+# Large datasets and generated folder data
+Reuters/
+Reuters_txt/
+Reuters_stemmed/
+dataset_vsm.txt
+
+# IDE / Tool configs
+.clangd
+.clangd/

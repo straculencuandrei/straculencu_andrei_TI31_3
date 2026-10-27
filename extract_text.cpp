@@ -3,12 +3,26 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include <filesystem>
 #include <algorithm>
 #include <cctype>
 #include <chrono>
 
-namespace fs = std::filesystem;
+#if defined(__has_include)
+  #if __has_include(<filesystem>)
+    #include <filesystem>
+    #if defined(__cpp_lib_filesystem) || (defined(__cplusplus) && __cplusplus >= 201703L) || (defined(_MSVC_LANG) && _MSVC_LANG >= 201703L)
+      namespace fs = std::filesystem;
+    #else
+      namespace fs = std::experimental::filesystem;
+    #endif
+  #elif __has_include(<experimental/filesystem>)
+    #include <experimental/filesystem>
+    namespace fs = std::experimental::filesystem;
+  #endif
+#else
+  #include <filesystem>
+  namespace fs = std::filesystem;
+#endif
 
 inline bool ci_char_eq(char a, char b) {
     return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
@@ -44,7 +58,9 @@ std::string decode_xml_entities(std::string text) {
         {"&gt;",   ">"}
     };
 
-    for (const auto& [entity, replacement] : entities) {
+    for (const auto& entry : entities) {
+        const std::string& entity = entry.first;
+        const std::string& replacement = entry.second;
         size_t pos = 0;
         while ((pos = text.find(entity, pos)) != std::string::npos) {
             text.replace(pos, entity.length(), replacement);
@@ -83,6 +99,46 @@ bool is_xml_file(const fs::path& p) {
     return ext == ".xml";
 }
 
+bool extract_topic_codes(const std::string& xml, std::vector<std::string>& out_codes) {
+    size_t topics_class_pos = find_ci(xml, "bip:topics:1.0");
+    if (topics_class_pos == std::string::npos) return false;
+
+    size_t codes_open = xml.rfind("<codes", topics_class_pos);
+    if (codes_open == std::string::npos) return false;
+
+    size_t codes_close = find_ci(xml, "</codes>", topics_class_pos);
+    if (codes_close == std::string::npos) return false;
+
+    std::string topics_section = xml.substr(codes_open, codes_close - codes_open);
+    size_t c_pos = 0;
+    while ((c_pos = find_ci(topics_section, "<code", c_pos)) != std::string::npos) {
+        size_t tag_end = topics_section.find('>', c_pos);
+        if (tag_end == std::string::npos) break;
+
+        std::string code_tag = topics_section.substr(c_pos, tag_end - c_pos + 1);
+        size_t attr_pos = find_ci(code_tag, "code=");
+        if (attr_pos != std::string::npos) {
+            size_t val_start = attr_pos + 5;
+            if (val_start < code_tag.length()) {
+                char q = code_tag[val_start];
+                if (q == '"' || q == '\'') {
+                    ++val_start;
+                    size_t val_end = code_tag.find(q, val_start);
+                    if (val_end != std::string::npos) {
+                        std::string code_val = code_tag.substr(val_start, val_end - val_start);
+                        code_val = trim(code_val);
+                        if (!code_val.empty() && std::find(out_codes.begin(), out_codes.end(), code_val) == out_codes.end()) {
+                            out_codes.push_back(code_val);
+                        }
+                    }
+                }
+            }
+        }
+        c_pos = tag_end + 1;
+    }
+    return !out_codes.empty();
+}
+
 bool process_file(const fs::path& input_path, const fs::path& output_path) {
     std::ifstream in(input_path, std::ios::binary);
     if (!in.is_open()) {
@@ -115,6 +171,9 @@ bool process_file(const fs::path& input_path, const fs::path& output_path) {
         }
     }
 
+    std::vector<std::string> topic_codes;
+    extract_topic_codes(content, topic_codes);
+
     if (output_path.has_parent_path()) {
         std::error_code ec;
         fs::create_directories(output_path.parent_path(), ec);
@@ -132,6 +191,10 @@ bool process_file(const fs::path& input_path, const fs::path& output_path) {
 
     for (const auto& p : paragraphs) {
         out << p << "\n";
+    }
+
+    for (const auto& tc : topic_codes) {
+        out << "<code code=\"" << tc << "\">\n";
     }
 
     out.close();

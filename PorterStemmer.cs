@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace WordFrequency
 {
-    class PorterStemmer
+    public class PorterStemmer
     {
         // The passed in word turned into a char array. 
         // Quicker to use to rebuilding strings each time a change is made.
